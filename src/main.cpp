@@ -6,13 +6,24 @@
 #include <string>
 #include <thread>
 #include <chrono>
+#include <sysinfoapi.h>
 #include "main.h"
 #include "constants.h"
 
 int main() {
-    LogWrite("\nNew session: (Injector version: " + VERSION + ")\n");
-    std::vector<std::string> dll_options;
+    // Get and format windows local time
+    SYSTEMTIME lt;
+    GetLocalTime(&lt);
+    std::string sessionDateTime = std::to_string(lt.wHour)
+        + ":" + std::to_string(lt.wMinute)
+        + ":" + std::to_string(lt.wSecond)
+        + " " + std::to_string(lt.wDay)
+        + "-" + std::to_string(lt.wMonth)
+        + "-" + std::to_string(lt.wYear);
 
+    LogWrite("\nNew session: (Injector version: " + VERSION + ") (Timestamp: " + sessionDateTime + ")\n");
+    
+    std::vector<std::string> dll_options;
     for (const auto& entry : std::filesystem::directory_iterator(".")) {
         if (entry.path().extension().string() == ".dll") {
             dll_options.push_back(entry.path().string());
@@ -113,6 +124,8 @@ void inject_into_proc(std::string dll_name, int& process_id) {
     return;
 }
 
+
+// Helper function for writing a logfile to diagnose issues
 void LogWrite(std::string toLog) {
     HANDLE fileHandle = CreateFileW(LOG_FILE, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
