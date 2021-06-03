@@ -21,18 +21,19 @@ int main() {
         + "-" + std::to_string(lt.wMonth)
         + "-" + std::to_string(lt.wYear);
 
-    LogWrite("\nNew session: (Injector version: " + VERSION + ") (Timestamp: " + sessionDateTime + ")\n");
+    log_write("\nNew session: (Injector version: " + VERSION + ") (Timestamp: " + sessionDateTime + ")\n");
     
+    // Find DLLs in same path as executable
     std::vector<std::string> dll_options;
     for (const auto& entry : std::filesystem::directory_iterator(".")) {
         if (entry.path().extension().string() == ".dll") {
             dll_options.push_back(entry.path().string());
-            LogWrite("(INFO) Preparing to load " + entry.path().string());
+            log_write("(INFO) Preparing to load " + entry.path().string());
         }
     }
 
     if (dll_options.size() > 0) {
-        LogWrite("(INFO) Waiting for " + TARGET);
+        log_write("(INFO) Waiting for " + TARGET);
 
         std::wstring qTarget = WTARGET + L".exe";
         const wchar_t* qualifiedTarget = qTarget.c_str();
@@ -42,24 +43,26 @@ int main() {
         std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
         int proc_id = get_proc_id(qualifiedTarget);
-        LogWrite("(INFO) " + TARGET + " found with process id: " + std::to_string(proc_id));
+        log_write("(INFO) " + TARGET + " found with process id: " + std::to_string(proc_id));
         if (proc_id != 0) {
             for (std::string dll : dll_options) {
-                inject_into_proc(std::filesystem::absolute(dll).string(), proc_id);
+                HANDLE injected = inject_into_proc(std::filesystem::absolute(dll).string(), proc_id);
                 std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-                LogWrite("(SUCCESS) Injection of " + std::filesystem::absolute(dll).string() + " into " + std::to_string(proc_id) + " seems to have succeeded");
+                if (injected)
+                    log_write("(SUCCESS) Injection of " + std::filesystem::absolute(dll).string() + " into " + std::to_string(proc_id) + " seems to have succeeded");
             }
         } else {
-            LogWrite("(ERROR) Error getting " + TARGET + " process id (Exiting)");
+            log_write("(ERROR) Error getting " + TARGET + " process id (Exiting)");
             return 0;
         }
     } else {
-        LogWrite("(ERROR) No DLL(s) found to inject (Exiting)");
+        log_write("(ERROR) No DLL(s) found to inject (Exiting)");
         return 0;
     }
     return 0;
 }
 
+// Check if a given process is currently running
 bool is_proc_running(const wchar_t* proc_name) {
     bool is_running = false;
     PROCESSENTRY32 process_entry;
@@ -79,6 +82,7 @@ bool is_proc_running(const wchar_t* proc_name) {
     return is_running;
 }
 
+// Returns a process ID for given process name
 int get_proc_id(const wchar_t* proc_name) {
     PROCESSENTRY32 process_entry;
     process_entry.dwSize = sizeof(PROCESSENTRY32);
@@ -97,36 +101,45 @@ int get_proc_id(const wchar_t* proc_name) {
     return 0;
 }
 
-void inject_into_proc(std::string dll_name, int& process_id) {
-    long dll_length = static_cast<long>(dll_name.length() + 1);
-    HANDLE proc_handle = OpenProcess(PROCESS_ALL_ACCESS, false, process_id);
-    if (proc_handle == NULL) {
-        return;
-    }
-    LPVOID virt_alloc = VirtualAllocEx(proc_handle, NULL, dll_length, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-    if (virt_alloc == NULL) {
-        return;
-    }
-    int write_dll_to_mem = WriteProcessMemory(proc_handle, virt_alloc, dll_name.c_str(), dll_length, 0);
-    if (write_dll_to_mem == NULL) {
-        return;
-    }
-    DWORD thread_id;
-    LPTHREAD_START_ROUTINE load_lib;
-    HMODULE load_lib_addr = LoadLibraryA("kernel32");
-    if (load_lib_addr != 0)
-        load_lib = reinterpret_cast<LPTHREAD_START_ROUTINE>(GetProcAddress(load_lib_addr, "LoadLibraryA"));
-    else
-        return;
 
-    HANDLE new_thread = CreateRemoteThread(proc_handle, NULL, 0, load_lib, virt_alloc, 0, &thread_id);
-    LogWrite("(INFO) Attempted to inject " + dll_name + " into " + std::to_string(process_id));
-    return;
+// Returns handle if successful, 0 otherwise
+HANDLE inject_into_proc(std::string dll_name, int& process_id) {
+    try {
+        long dll_length = static_cast<long>(dll_name.length() + 1);
+        HANDLE proc_handle = OpenProcess(PROCESS_ALL_ACCESS, false, process_id);
+        if (proc_handle == NULL) {
+            return 0;
+        }
+        LPVOID virt_alloc = VirtualAllocEx(proc_handle, NULL, dll_length, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        if (virt_alloc == NULL) {
+            return 0;
+        }
+        int write_dll_to_mem = WriteProcessMemory(proc_handle, virt_alloc, dll_name.c_str(), dll_length, 0);
+        if (write_dll_to_mem == NULL) {
+            return 0;
+        }
+        DWORD thread_id;
+        LPTHREAD_START_ROUTINE load_lib;
+        HMODULE load_lib_addr = LoadLibraryA("kernel32");
+        if (load_lib_addr != 0)
+            load_lib = reinterpret_cast<LPTHREAD_START_ROUTINE>(GetProcAddress(load_lib_addr, "LoadLibraryA"));
+        else
+            return 0;
+
+        HANDLE new_thread = CreateRemoteThread(proc_handle, NULL, 0, load_lib, virt_alloc, 0, &thread_id);
+        log_write("(INFO) Attempted to inject " + dll_name + " into " + std::to_string(process_id));
+        return new_thread;
+    }
+    catch (std::exception ex) {
+        log_write("(ERROR) " + std::string{ex.what()});
+        return 0;
+    }
+    
 }
 
 
 // Helper function for writing a logfile to diagnose issues
-void LogWrite(std::string toLog) {
+void log_write(std::string toLog) {
     HANDLE fileHandle = CreateFileW(LOG_FILE, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
     if (fileHandle == INVALID_HANDLE_VALUE)
