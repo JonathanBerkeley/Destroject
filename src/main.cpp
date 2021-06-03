@@ -127,7 +127,11 @@ HANDLE inject_into_proc(std::string dll_name, int& process_id) {
             return 0;
 
         HANDLE new_thread = CreateRemoteThread(proc_handle, NULL, 0, load_lib, virt_alloc, 0, &thread_id);
-        log_write("(INFO) Attempted to inject " + dll_name + " into " + std::to_string(process_id));
+        new_thread = NULL;
+        std::stringstream ss;
+        ss << std::hex << new_thread;
+        log_write("(INFO) Attempted to inject " + dll_name + " into " + std::to_string(process_id) + " handle: " + ((new_thread) ? "0x" + ss.str() : "NULL"));
+
         return new_thread;
     }
     catch (std::exception ex) {
