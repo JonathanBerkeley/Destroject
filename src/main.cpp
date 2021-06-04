@@ -22,7 +22,7 @@ int main() {
         + "-" + std::to_string(lt.wYear);
 
     log_write("\nNew session: (Injector version: " + VERSION + ") (Timestamp: " + sessionDateTime + ")\n");
-    
+
     // Find DLLs in same path as executable
     std::vector<std::string> dll_options;
     for (const auto& entry : std::filesystem::directory_iterator(".")) {
@@ -38,24 +38,26 @@ int main() {
         std::wstring qTarget = WTARGET + L".exe";
         const wchar_t* qualifiedTarget = qTarget.c_str();
         while (!is_proc_running(qualifiedTarget)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            sleep(200);
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+        sleep(5000);
 
         int proc_id = get_proc_id(qualifiedTarget);
         log_write("(INFO) " + TARGET + " found with process id: " + std::to_string(proc_id));
         if (proc_id != 0) {
             for (std::string dll : dll_options) {
                 HANDLE injected = inject_into_proc(std::filesystem::absolute(dll).string(), proc_id);
-                std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+                sleep(2000);
                 if (injected)
                     log_write("(SUCCESS) Injection of " + std::filesystem::absolute(dll).string() + " into " + std::to_string(proc_id) + " seems to have succeeded");
             }
-        } else {
+        }
+        else {
             log_write("(ERROR) Error getting " + TARGET + " process id (Exiting)");
             return 0;
         }
-    } else {
+    }
+    else {
         log_write("(ERROR) No DLL(s) found to inject (Exiting)");
         return 0;
     }
@@ -127,18 +129,31 @@ HANDLE inject_into_proc(std::string dll_name, int& process_id) {
             return 0;
 
         HANDLE new_thread = CreateRemoteThread(proc_handle, NULL, 0, load_lib, virt_alloc, 0, &thread_id);
-        new_thread = NULL;
-        std::stringstream ss;
-        ss << std::hex << new_thread;
-        log_write("(INFO) Attempted to inject " + dll_name + " into " + std::to_string(process_id) + " handle: " + ((new_thread) ? "0x" + ss.str() : "NULL"));
+        if (!new_thread) {
+            log_write("(ERROR) Unsuccessfully attempted to inject " + dll_name + " into " + std::to_string(process_id));
+            log_write("(ERROR) Windows returned system error code 0x" + std::to_string(GetLastError()));
+            return 0;
+        }
+        else {
+            std::stringstream ss;
+            ss << std::hex << new_thread;
+            log_write("(INFO) Attempted to inject " + dll_name + " into " + std::to_string(process_id) + " handle: 0x" + ss.str());
+            return new_thread;
+        }
 
-        return new_thread;
-    }
-    catch (std::exception ex) {
-        log_write("(ERROR) " + std::string{ex.what()});
         return 0;
     }
-    
+    catch (std::exception ex) {
+        log_write("(ERROR) " + std::string{ ex.what() });
+        return 0;
+    }
+
+}
+
+
+//Tidier thread sleep function
+void sleep(long long milliseconds) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
 }
 
 
@@ -147,13 +162,14 @@ void log_write(std::string toLog) {
     HANDLE fileHandle = CreateFileW(LOG_FILE, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
     if (fileHandle == INVALID_HANDLE_VALUE)
-        MessageBoxW(0, L"Failed to open error log file", 0, 0);
+        MessageBoxW(0, L"(destroy0m) Failed to open error log file", 0, 0);
 
     DWORD written;
     toLog += "\r\n";
     try {
         WriteFile(fileHandle, toLog.c_str(), (DWORD)toLog.length(), &written, NULL);
-    } catch (const std::exception &ex) {
+    }
+    catch (const std::exception& ex) {
         std::string exceptionLog = "Exception when trying to write previous entry to log file: " + std::string(ex.what());
         WriteFile(fileHandle, exceptionLog.c_str(), (DWORD)exceptionLog.length(), &written, NULL);
     }
