@@ -24,6 +24,7 @@ int main() {
     log_write("\nNew session: (Injector version: " + VERSION + ") (Timestamp: " + sessionDateTime + ")\n");
 
     // Find DLLs in same path as executable
+    // When running in debug environment, you may need to put the DLL in the parent folder
     std::vector<std::string> dll_options;
     for (const auto& entry : std::filesystem::directory_iterator(".")) {
         if (entry.path().extension().string() == ".dll") {
@@ -64,10 +65,11 @@ int main() {
     return 0;
 }
 
+
 // Check if a given process is currently running
 bool is_proc_running(const wchar_t* proc_name) {
     bool is_running = false;
-    PROCESSENTRY32 process_entry;
+    PROCESSENTRY32 process_entry{};
     process_entry.dwSize = sizeof(PROCESSENTRY32);
 
     HANDLE proc_snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
@@ -84,9 +86,10 @@ bool is_proc_running(const wchar_t* proc_name) {
     return is_running;
 }
 
+
 // Returns a process ID for given process name
 int get_proc_id(const wchar_t* proc_name) {
-    PROCESSENTRY32 process_entry;
+    PROCESSENTRY32 process_entry{};
     process_entry.dwSize = sizeof(PROCESSENTRY32);
 
     HANDLE proc_snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
@@ -99,6 +102,7 @@ int get_proc_id(const wchar_t* proc_name) {
             }
         }
     }
+
     CloseHandle(proc_snap);
     return 0;
 }
@@ -109,17 +113,17 @@ HANDLE inject_into_proc(std::string dll_name, int& process_id) {
     try {
         long dll_length = static_cast<long>(dll_name.length() + 1);
         HANDLE proc_handle = OpenProcess(PROCESS_ALL_ACCESS, false, process_id);
-        if (proc_handle == NULL) {
+        if (proc_handle == NULL)
             return 0;
-        }
+
         LPVOID virt_alloc = VirtualAllocEx(proc_handle, NULL, dll_length, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-        if (virt_alloc == NULL) {
+        if (virt_alloc == NULL)
             return 0;
-        }
+
         int write_dll_to_mem = WriteProcessMemory(proc_handle, virt_alloc, dll_name.c_str(), dll_length, 0);
-        if (write_dll_to_mem == NULL) {
+        if (write_dll_to_mem == NULL)
             return 0;
-        }
+
         DWORD thread_id;
         LPTHREAD_START_ROUTINE load_lib;
         HMODULE load_lib_addr = LoadLibraryA("kernel32");
@@ -151,7 +155,7 @@ HANDLE inject_into_proc(std::string dll_name, int& process_id) {
 }
 
 
-//Tidier thread sleep function
+// Tidier thread sleep function
 void sleep(long long milliseconds) {
     std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
 }
