@@ -17,8 +17,9 @@
 #include <Windows.h>
 
 #include "constants.h"
+#include "util.h"
 
-int main() {
+int main(const int argc, const char* argv[]) {
     // Get and format windows local time
     SYSTEMTIME lt;
     GetLocalTime(&lt);
@@ -29,7 +30,32 @@ int main() {
         + "-" + std::to_string(lt.wMonth)
         + "-" + std::to_string(lt.wYear);
 
-    log_write("\nNew session: (Injector version: " + VERSION + ") (Timestamp: " + session_date_time + ")\n");
+    log_write("\nNew session: (Injector version: " + constants::VERSION + ") (Timestamp: " + session_date_time + ")\n");
+
+    std::string target;
+    switch (argc) {
+    case 1:
+        // No argument given, check config file
+        if (const auto& [content, error] { config_read() }; error.empty()) {
+            target = content;
+        }
+        else {
+            log_write("(ERROR) No config found, and no command-line arguments supplied \n"
+                "(INFO) Run with arguments e.g:\n"
+                "C:\\Users\\Me\\Desktop> " + constants::NAME + ".exe ProcessName\n");
+            return 0;
+        }
+        break;
+    case 2:
+        // On argument supplied
+        target = argv[1];
+        config_write(target);
+        break;
+    default:
+        return 0;
+    }
+
+    const auto w_target = std::wstring(target.begin(), target.end());
 
     // Find DLLs in same path as executable
     // When running in debug environment, you may need to put the DLL in the parent folder
@@ -42,9 +68,9 @@ int main() {
     }
 
     if (!dll_options.empty()) {
-        log_write("(INFO) Waiting for " + TARGET);
+        log_write("(INFO) Waiting for " + target);
 
-        const std::wstring q_target = WTARGET + L".exe";
+        const std::wstring q_target = w_target + L".exe";
         const wchar_t* qualified_target = q_target.c_str();
         while (!is_proc_running(qualified_target))
             sleep(200);
@@ -52,7 +78,7 @@ int main() {
         sleep(5000);
 
         int proc_id = static_cast<int>(get_proc_id(qualified_target));
-        log_write("(INFO) " + TARGET + " found with process id: " + std::to_string(proc_id));
+        log_write("(INFO) " + target + " found with process id: " + std::to_string(proc_id));
         if (proc_id != 0) {
             for (const std::string& dll : dll_options) {
                 HANDLE injected = inject_into_proc(std::filesystem::absolute(dll).string(), proc_id);
@@ -67,7 +93,7 @@ int main() {
             }
         }
         else {
-            log_write("(ERROR) Error getting " + TARGET + " process id (Exiting)");
+            log_write("(ERROR) Error getting " + target + " process id (Exiting)");
             return 0;
         }
     }
@@ -128,7 +154,7 @@ HANDLE inject_into_proc(const std::string& dll_name, const int process_id) {
         LPVOID virt_alloc = VirtualAllocEx(
             proc_handle,
             nullptr,
-            dll_length, 
+            dll_length,
             MEM_COMMIT,
             PAGE_EXECUTE_READWRITE
         );
@@ -151,7 +177,7 @@ HANDLE inject_into_proc(const std::string& dll_name, const int process_id) {
             load_lib = reinterpret_cast<LPTHREAD_START_ROUTINE>(GetProcAddress(load_lib_addr, "LoadLibraryA"));
         else
             return nullptr;
-        
+
         HANDLE new_thread = CreateRemoteThread(
             proc_handle,
             nullptr,
@@ -184,38 +210,4 @@ HANDLE inject_into_proc(const std::string& dll_name, const int process_id) {
 // Tidier thread sleep function
 void sleep(const long long milliseconds) {
     std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
-}
-
-
-// Helper function for writing a logfile to diagnose issues
-void log_write(std::string text) {
-    HANDLE file_handle = CreateFileW(
-        LOG_FILE,
-        FILE_APPEND_DATA,
-        FILE_SHARE_READ,
-        nullptr,
-        OPEN_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr
-    );
-
-    if (file_handle == INVALID_HANDLE_VALUE)
-        MessageBoxW(nullptr, L"(destroy0m) Failed to open error log file", nullptr, 0);
-
-    DWORD written;
-    text += "\r\n";
-    try {
-        WriteFile(file_handle, text.c_str(), text.length(), &written, nullptr);
-    }
-    catch (const std::exception& ex) {
-        const std::string exception_log = "Exception when trying to write previous entry to log file: " + std::string{ ex.what() };
-        WriteFile(
-            file_handle,
-            exception_log.c_str(),
-            exception_log.length(),
-            &written,
-            nullptr
-        );
-    }
-    CloseHandle(file_handle);
 }
