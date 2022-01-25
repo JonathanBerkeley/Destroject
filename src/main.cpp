@@ -13,6 +13,7 @@
 #include <sysinfoapi.h>
 #include <thread>
 #include <TlHelp32.h>
+#include <vector>
 #include <Windows.h>
 
 #include "constants.h"
@@ -207,7 +208,7 @@ void log_write(std::string text) {
         WriteFile(file_handle, text.c_str(), text.length(), &written, nullptr);
     }
     catch (const std::exception& ex) {
-        const std::string exception_log = "Exception when trying to write previous entry to log file: " + std::string(ex.what());
+        const std::string exception_log = "Exception when trying to write previous entry to log file: " + std::string{ ex.what() };
         WriteFile(
             file_handle,
             exception_log.c_str(),
