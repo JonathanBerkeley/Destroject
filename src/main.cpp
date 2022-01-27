@@ -2,6 +2,7 @@
 // ReSharper disable CppClangTidyConcurrencyMtUnsafe
 // ReSharper disable CppRedundantCastExpression
 // ReSharper disable CppClangTidyBugproneMisplacedWideningCast
+// ReSharper disable CppClangTidyClangDiagnosticCastFunctionType
 #define WIN32_LEAN_AND_MEAN
 
 #include "main.h"
@@ -174,7 +175,7 @@ HANDLE inject_into_proc(const std::string& dll_name, const int process_id) {
         DWORD thread_id;
         LPTHREAD_START_ROUTINE load_lib;
         if (const HMODULE load_lib_addr = LoadLibraryA("kernel32"); load_lib_addr != nullptr)
-            load_lib = reinterpret_cast<LPTHREAD_START_ROUTINE>(GetProcAddress(load_lib_addr, "LoadLibraryA"));
+            load_lib = reinterpret_cast<LPTHREAD_START_ROUTINE>(GetProcAddress(load_lib_addr, "LoadLibraryA"));  
         else
             return nullptr;
 
