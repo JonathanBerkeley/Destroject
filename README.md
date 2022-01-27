@@ -9,3 +9,4 @@ Windows multiple DLL process injector
 
 After running the first time through command-line, it will save the last entered process.    
 To inject into the same process again, the injector can just be run directly.    
+To inject into a different process, do Step 3 again.
