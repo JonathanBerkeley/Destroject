@@ -149,13 +149,13 @@
   <ItemGroup>
     <ClInclude Include="..\src\constants.h" />
     <ClInclude Include="..\src\main.h" />
-    <ClInclude Include="..\src\manualmap.h" />
+    <ClInclude Include="..\src\manual_map.h" />
     <ClInclude Include="..\src\util.h" />
     <ClInclude Include="resource1.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\main.cpp" />
-    <ClCompile Include="..\src\manualmap.cpp" />
+    <ClCompile Include="..\src\manual_map.cpp" />
     <ClCompile Include="..\src\util.cpp" />
   </ItemGroup>
   <ItemGroup>

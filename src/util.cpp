@@ -2,10 +2,13 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <chrono>
+#include <thread>
 
 #include "util.h"
 #include "constants.h"
 #include "main.h"
+
 
 file_contents config_read() {
     if (std::ifstream in{ constants::CONFIG }; in) {
@@ -77,4 +80,10 @@ void log_write(std::string text) {
         );
     }
     CloseHandle(file_handle);
+}
+
+
+// Tidier thread sleep function
+void sleep(const long long milliseconds) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
 }

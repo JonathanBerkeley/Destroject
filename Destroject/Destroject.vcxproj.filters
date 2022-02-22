@@ -27,7 +27,7 @@
     <ClInclude Include="resource1.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\manualmap.h">
+    <ClInclude Include="..\src\manual_map.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -38,7 +38,7 @@
     <ClCompile Include="..\src\util.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\manualmap.cpp">
+    <ClCompile Include="..\src\manual_map.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

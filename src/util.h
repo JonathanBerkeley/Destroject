@@ -11,6 +11,6 @@ struct file_contents {
 file_contents config_read();
 void config_write(const std::string& content);
 void log_write(std::string text);
+void sleep(long long milliseconds);
 
-//From Il2CppInspector - http://www.djkaty.com - https://github.com/djkaty
 const LPCWSTR LOG_FILE = L"destroject.log";

@@ -7,7 +7,6 @@
 
 #include "main.h"
 
-#include <chrono>
 #include <filesystem>
 #include <sstream>
 #include <string>
@@ -17,9 +16,10 @@
 #include <vector>
 #include <Windows.h>
 
-#include "manualmap.h"
+#include "manual_map.h"
 #include "constants.h"
 #include "util.h"
+
 
 int main(const int argc, const char* argv[]) {
     // Get and format windows local time
@@ -43,8 +43,6 @@ int main(const int argc, const char* argv[]) {
         if (const auto& [process_target, mode, error] { config_read() }; error.empty()) {
             target = process_target;
             manual_map = mode == "Manual";
-            log_write("(CFG) Target: " + target + "\n(CFG) Mode: " 
-                + (manual_map ? "Manual" : "Default"));
         }
         else {
             log_write(error + "\n"
@@ -63,6 +61,8 @@ int main(const int argc, const char* argv[]) {
         return 0;
     }
 
+    log_write("(CFG) Target: " + target + "\n(CFG) Mode: "
+        + (manual_map ? "Manual" : "Default"));
     const auto w_target = std::wstring(target.begin(), target.end());
 
     // Find DLLs in same path as executable
@@ -226,22 +226,23 @@ HANDLE inject_into_proc(const std::string& dll_name, const int process_id) {
 
 }
 
+
 // Manual map DLL into process
 HANDLE map_into_proc(const std::string& dll_name, const int process_id) {
     try {
         HANDLE proc_handle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, process_id);
         if (proc_handle == nullptr)
             return nullptr;
-        
-        return ManualMap(proc_handle, dll_name.c_str());
+
+        HANDLE new_thread = manual_map(proc_handle, dll_name.c_str());
+
+        std::stringstream ss;
+        ss << std::hex << new_thread;
+        log_write("(INFO) Attempted to inject " + dll_name + " into " + std::to_string(process_id) + " handle: 0x" + ss.str());
+        return new_thread;
     }
     catch (const std::exception& ex) {
         log_write("(ERROR) " + std::string{ ex.what() });
         return nullptr;
     }
-}
-
-// Tidier thread sleep function
-void sleep(const long long milliseconds) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
 }

@@ -1,11 +1,13 @@
+// ReSharper disable CppClangTidyPerformanceNoIntToPtr
+// ReSharper disable CppClangTidyClangDiagnosticMicrosoftCast
 #include <fstream>
 #include <string>
 
-#include "manualmap.h"
+#include "manual_map.h"
 #include "util.h"
 
-HANDLE ManualMap(HANDLE proc_handle, const char* dll_name) {
-    BYTE* src_data = nullptr;
+
+HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
     IMAGE_NT_HEADERS* old_nt_header = nullptr;
     BYTE* pTargetBase = nullptr;
 
@@ -28,7 +30,7 @@ HANDLE ManualMap(HANDLE proc_handle, const char* dll_name) {
         return nullptr;
     }
 
-    src_data = new BYTE[static_cast<UINT_PTR>(file_size)];
+    const auto src_data = std::make_unique<BYTE[]>(file_size);
     if (!src_data) {
         log_write("(ERROR_MM) Memory allocating failed");
         file.close();
@@ -36,29 +38,26 @@ HANDLE ManualMap(HANDLE proc_handle, const char* dll_name) {
     }
 
     file.seekg(0, std::ios::beg);
-    file.read(reinterpret_cast<char*>(src_data), file_size);
+    file.read(reinterpret_cast<char*>(src_data.get()), file_size);
     file.close();
 
-    if (reinterpret_cast<IMAGE_DOS_HEADER*>(src_data)->e_magic != 0x5A4D) {
+    if (reinterpret_cast<IMAGE_DOS_HEADER*>(src_data.get())->e_magic != 0x5A4D) {
         log_write("(ERROR_MM) Wrong file type");
-        delete[] src_data;
         return nullptr;
     }
 
-    old_nt_header = reinterpret_cast<IMAGE_NT_HEADERS*>(src_data + reinterpret_cast<IMAGE_DOS_HEADER*>(src_data)->e_lfanew);
+    old_nt_header = reinterpret_cast<IMAGE_NT_HEADERS*>(src_data.get() + reinterpret_cast<IMAGE_DOS_HEADER*>(src_data.get())->e_lfanew);
     const IMAGE_OPTIONAL_HEADER* old_opt_header = &old_nt_header->OptionalHeader;
     const IMAGE_FILE_HEADER* old_file_header = &old_nt_header->FileHeader;
 
 #ifdef _WIN64
     if (old_file_header->Machine != IMAGE_FILE_MACHINE_AMD64) {
         log_write("(ERROR_MM) Unsupported platform");
-        delete[] src_data;
         return nullptr;
     }
 #else
     if (pOldFileHeader->Machine != IMAGE_FILE_MACHINE_I386) {
         log_write("(ERROR_MM) Unsupported platform");
-        delete[] pSrcData;
         return nullptr;
     }
 #endif
@@ -72,7 +71,6 @@ HANDLE ManualMap(HANDLE proc_handle, const char* dll_name) {
 
         if (!pTargetBase) {
             log_write("(ERROR_MM) Memory allocation failed: " + std::to_string(GetLastError()));
-            delete[] src_data;
             return nullptr;
         }
     }
@@ -85,33 +83,38 @@ HANDLE ManualMap(HANDLE proc_handle, const char* dll_name) {
     for (UINT i = 0; i != old_file_header->NumberOfSections; ++i, ++pSectionHeader) {
         if (pSectionHeader->SizeOfRawData) {
             if (!WriteProcessMemory(proc_handle, pTargetBase + pSectionHeader->VirtualAddress,
-                src_data + pSectionHeader->PointerToRawData, pSectionHeader->SizeOfRawData, nullptr)) {
+                src_data.get() + pSectionHeader->PointerToRawData, pSectionHeader->SizeOfRawData, nullptr)) {
                 log_write("(ERROR_MM) Could not map sections: " + std::to_string(GetLastError()));
-                delete[] src_data;
                 VirtualFreeEx(proc_handle, pTargetBase, 0, MEM_RELEASE);
                 return nullptr;
             }
         }
     }
-    memcpy(src_data, &data, sizeof(data));
-    WriteProcessMemory(proc_handle, pTargetBase, src_data, 0x1000, nullptr);
+    memcpy(src_data.get(), &data, sizeof(data));
+    WriteProcessMemory(proc_handle, pTargetBase, src_data.get(), 0x1000, nullptr);
 
-    delete[] src_data;
-
-    void* pShellCode = VirtualAllocEx(proc_handle, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-    if (!pShellCode) {
+    void* alloc_memory = VirtualAllocEx(proc_handle, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!alloc_memory) {
         log_write("(ERROR_MM) Shell-code memory allocation failed: " + std::to_string(GetLastError()));
         VirtualFreeEx(proc_handle, pTargetBase, 0, MEM_RELEASE);
         return nullptr;
     }
 
-    WriteProcessMemory(proc_handle, pShellCode, ShellCode, 0x1000, nullptr);
+    WriteProcessMemory(proc_handle, alloc_memory, shell_code, 0x1000, nullptr);
 
-    HANDLE new_thread = CreateRemoteThread(proc_handle, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(pShellCode), pTargetBase, 0, nullptr);
+    HANDLE new_thread = CreateRemoteThread(
+        proc_handle,
+        nullptr,
+        0,
+        reinterpret_cast<LPTHREAD_START_ROUTINE>(alloc_memory),
+        pTargetBase,
+        0,
+        nullptr
+    );
     if (!new_thread) {
         log_write("(ERROR_MM) CreateRemoteThread failed:  " + std::to_string(GetLastError()));
         VirtualFreeEx(proc_handle, pTargetBase, 0, MEM_RELEASE);
-        VirtualFreeEx(proc_handle, pShellCode, 0, MEM_RELEASE);
+        VirtualFreeEx(proc_handle, alloc_memory, 0, MEM_RELEASE);
         return nullptr;
     }
 
@@ -123,7 +126,7 @@ HANDLE ManualMap(HANDLE proc_handle, const char* dll_name) {
         Sleep(10);
     }
 
-    VirtualFreeEx(proc_handle, pShellCode, 0, MEM_RELEASE);
+    VirtualFreeEx(proc_handle, alloc_memory, 0, MEM_RELEASE);
 
     return new_thread;
 }
@@ -137,8 +140,8 @@ HANDLE ManualMap(HANDLE proc_handle, const char* dll_name) {
 #endif //  _WIN64
 
 
-void WINAPI ShellCode(MANUAL_MAPPING_DATA* mapping_data) {
-    // todo: Add more checks to members (pData->)
+void WINAPI shell_code(MANUAL_MAPPING_DATA* mapping_data) {
+    // todo: Add more checks to members (mapping_data->)
     if (!mapping_data)
         return;
 
@@ -170,7 +173,8 @@ void WINAPI ShellCode(MANUAL_MAPPING_DATA* mapping_data) {
                     *patch += reinterpret_cast<UINT_PTR>(location_delta);
                 }
             }
-            base_relocation = reinterpret_cast<IMAGE_BASE_RELOCATION*>(reinterpret_cast<BYTE*>(base_relocation) + base_relocation->SizeOfBlock);
+            base_relocation = reinterpret_cast<IMAGE_BASE_RELOCATION*>(
+                reinterpret_cast<BYTE*>(base_relocation) + base_relocation->SizeOfBlock);
         }
     }
 
@@ -202,12 +206,11 @@ void WINAPI ShellCode(MANUAL_MAPPING_DATA* mapping_data) {
     }
 
     if (optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].Size) {
-        auto* tls = reinterpret_cast<IMAGE_TLS_DIRECTORY*>(
+        const auto* tls = reinterpret_cast<IMAGE_TLS_DIRECTORY*>(
             base + optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].VirtualAddress
         );
-        auto* tls_callback = reinterpret_cast<PIMAGE_TLS_CALLBACK*>(tls->AddressOfCallBacks);
 
-        for (; tls_callback && *tls_callback; ++tls_callback)
+        for (auto* tls_callback = reinterpret_cast<PIMAGE_TLS_CALLBACK*>(tls->AddressOfCallBacks); tls_callback && *tls_callback; ++tls_callback)
             (*tls_callback)(base, DLL_PROCESS_ATTACH, nullptr);
     }
     dll_main(base, DLL_PROCESS_ATTACH, nullptr);

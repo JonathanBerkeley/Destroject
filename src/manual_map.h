@@ -13,5 +13,5 @@ struct MANUAL_MAPPING_DATA {
     HINSTANCE hMod;
 };
 
-void WINAPI ShellCode(MANUAL_MAPPING_DATA* mapping_data);
-HANDLE ManualMap(HANDLE proc_handle, const char* dll_name);
+void WINAPI shell_code(MANUAL_MAPPING_DATA* mapping_data);
+HANDLE manual_map(HANDLE proc_handle, const char* dll_name);

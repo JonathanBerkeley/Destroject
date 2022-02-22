@@ -52,17 +52,17 @@ END
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
-IDI_ICON1               ICON                    "C:\\Users\\mainuser\\Desktop\\dev\\cpp\\__quack\\Red team\\Destroject\\destrico\\destroco3-1.ico"
+IDI_ICON1               ICON                    "..\\destrico\\destroco3-1.ico"
 
-IDI_ICON2               ICON                    "C:\\Users\\mainuser\\Desktop\\dev\\cpp\\__quack\\Red team\\Destroject\\destrico\\destroco3-2_1.ico"
+IDI_ICON2               ICON                    "..\\destrico\\destroco3-2_1.ico"
 
-IDI_ICON3               ICON                    "C:\\Users\\mainuser\\Desktop\\dev\\cpp\\__quack\\Red team\\Destroject\\destrico\\destroco3-3_1.ico"
+IDI_ICON3               ICON                    "..\\destrico\\destroco3-3_1.ico"
 
-IDI_ICON4               ICON                    "C:\\Users\\mainuser\\Desktop\\dev\\cpp\\__quack\\Red team\\Destroject\\destrico\\destroco3-4.ico"
+IDI_ICON4               ICON                    "..\\destrico\\destroco3-4.ico"
 
-IDI_ICON5               ICON                    "C:\\Users\\mainuser\\Desktop\\dev\\cpp\\__quack\\Red team\\Destroject\\destrico\\destroco3-5.ico"
+IDI_ICON5               ICON                    "..\\destrico\\destroco3-5.ico"
 
-IDI_ICON6               ICON                    "C:\\Users\\mainuser\\Desktop\\dev\\cpp\\__quack\\Red team\\Destroject\\destrico\\destroco3-6.ico"
+IDI_ICON6               ICON                    "..\\destrico\\destroco3-6.ico"
 
 #endif    // English (United States) resources
 /////////////////////////////////////////////////////////////////////////////
