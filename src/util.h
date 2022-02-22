@@ -3,7 +3,8 @@
 #include <string>
 
 struct file_contents {
-    std::string content;
+    std::string target;
+    std::string mode;
     std::string error;
 };
 

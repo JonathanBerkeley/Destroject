@@ -9,14 +9,27 @@
 
 file_contents config_read() {
     if (std::ifstream in{ constants::CONFIG }; in) {
-        return file_contents{
-            .content = std::string{
-                std::istreambuf_iterator{in},
-                std::istreambuf_iterator<char>{}
-            }
-        };
+        file_contents contents{};
+
+        try {
+            std::getline(in, contents.target);
+            contents.target = contents.target.substr(
+                contents.target.find(':') + 1u
+            );
+
+            std::getline(in, contents.mode);
+            contents.mode = contents.mode.substr(
+                contents.mode.find(':') + 1u
+            );
+
+            return contents;
+        }
+        catch (const std::out_of_range&) {
+            contents.error = "(ERROR) Invalid config, delete it";
+            return contents;
+        }
     }
-    return file_contents{ .error = "Couldn't find or open config!" };
+    return file_contents{ .error = "(ERROR) Couldn't find or open config!" };
 }
 
 

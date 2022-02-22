@@ -1,0 +1,48 @@
+# Turn this .gitignore into a whitelist instead of a blacklist
+*
+!*/
+!/Main/
+!/Quack-client/
+!/Quack-internal/
+!/Quack-server/
+!/Red team/*
+!/Testbed/
+!/Lib/
+
+# Source code
+!*.cpp
+!*.cc
+!*.c
+!*.h
+!*.hpp
+
+# Media
+!*.psd
+!*.pdf
+!*.png
+!*.jpg
+!*.jpeg
+!*.gif
+!*.ico
+!*.rc
+
+# Plain text files
+!.gitignore
+!LICENSE.txt
+!LICENSE.md
+!meta.md
+!credits.md
+!CREDITS.txt
+
+# Visual studio files
+!*.sln
+!*.vcxproj
+!*.vcxproj.filters
+!*.vcxproj.user
+
+# Other
+!*.lib
+!*.docx
+
+#Specific
+!DummyGame.exe

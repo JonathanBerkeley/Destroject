@@ -17,6 +17,7 @@
 #include <vector>
 #include <Windows.h>
 
+#include "manualmap.h"
 #include "constants.h"
 #include "util.h"
 
@@ -34,24 +35,30 @@ int main(const int argc, const char* argv[]) {
     log_write("\nNew session: (Injector version: " + constants::VERSION + ") (Timestamp: " + session_date_time + ")\n");
 
     std::string target;
+    bool manual_map = false;
     switch (argc) {
     case 1:
+    {
         // No argument given, check config file
-        if (const auto& [content, error] { config_read() }; error.empty()) {
-            target = content;
+        if (const auto& [process_target, mode, error] { config_read() }; error.empty()) {
+            target = process_target;
+            manual_map = mode == "Manual";
+            log_write("(CFG) Target: " + target + "\n(CFG) Mode: " 
+                + (manual_map ? "Manual" : "Default"));
         }
         else {
-            log_write("(ERROR) No config found, and no command-line arguments supplied \n"
+            log_write(error + "\n"
                 "(INFO) Run with arguments e.g:\n"
                 "C:\\Users\\Me\\Desktop> " + constants::NAME + ".exe ProcessName\n");
             return 0;
         }
-        break;
+    } break;
     case 2:
+    {
         // On argument supplied
         target = argv[1];
         config_write(target);
-        break;
+    } break;
     default:
         return 0;
     }
@@ -76,19 +83,31 @@ int main(const int argc, const char* argv[]) {
         while (!is_proc_running(qualified_target))
             sleep(200);
 
-        sleep(5000);
+        sleep(3000);
 
         int proc_id = static_cast<int>(get_proc_id(qualified_target));
         log_write("(INFO) " + target + " found with process id: " + std::to_string(proc_id));
         if (proc_id != 0) {
             for (const std::string& dll : dll_options) {
-                HANDLE injected = inject_into_proc(std::filesystem::absolute(dll).string(), proc_id);
+
+                HANDLE injected_dll = (manual_map) ? 
+                    map_into_proc(std::filesystem::absolute(dll).string(), proc_id)
+                : inject_into_proc(std::filesystem::absolute(dll).string(), proc_id);
+
                 sleep(2000);
-                if (injected) {
+                if (injected_dll) {
                     log_write("(SUCCESS) Injection of "
                         + std::filesystem::absolute(dll).string()
                         + " into " + std::to_string(proc_id)
                         + " seems to have succeeded"
+                    );
+                    CloseHandle(injected_dll);
+                }
+                else {
+                    log_write("(ERROR) Injection of "
+                        + std::filesystem::absolute(dll).string()
+                        + " into " + std::to_string(proc_id)
+                        + " seems to have failed"
                     );
                 }
             }
@@ -207,6 +226,20 @@ HANDLE inject_into_proc(const std::string& dll_name, const int process_id) {
 
 }
 
+// Manual map DLL into process
+HANDLE map_into_proc(const std::string& dll_name, const int process_id) {
+    try {
+        HANDLE proc_handle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, process_id);
+        if (proc_handle == nullptr)
+            return nullptr;
+        
+        return ManualMap(proc_handle, dll_name.c_str());
+    }
+    catch (const std::exception& ex) {
+        log_write("(ERROR) " + std::string{ ex.what() });
+        return nullptr;
+    }
+}
 
 // Tidier thread sleep function
 void sleep(const long long milliseconds) {
