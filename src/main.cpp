@@ -20,6 +20,12 @@
 #include "constants.h"
 #include "util.h"
 
+#ifdef _WIN64
+constexpr bool x64 = true;
+#else
+constexpr bool x64 = false;
+#endif
+
 
 int main(const int argc, const char* argv[]) {
     // Get and format windows local time
@@ -32,7 +38,8 @@ int main(const int argc, const char* argv[]) {
         + "-" + std::to_string(lt.wMonth)
         + "-" + std::to_string(lt.wYear);
 
-    log_write("\nNew session: (Injector version: " + constants::VERSION + ") (Timestamp: " + session_date_time + ")\n");
+    const std::string win64 = (x64) ? "x64" : "x86";
+    log_write("\nNew session: (Injector version: " + constants::VERSION + " " + win64 + ") (Timestamp: " + session_date_time + ")\n");
 
     std::string target;
     bool manual_map = false;
