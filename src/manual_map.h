@@ -1,17 +1,22 @@
 #pragma once
 
+/*
+ * Manual map logic inspired by Broihon on behalf of GuidedHacking:
+ * https://youtu.be/qzZTXcBu3cE
+ */
+
 #include <Windows.h>
 #include <TlHelp32.h>
 
-using f_LoadLibraryA    = HINSTANCE (WINAPI*)(const char* lpLibFileName);
-using f_GetProcAddress  = UINT_PTR  (WINAPI*)(HINSTANCE hModule, const char* lpProcName);
-using f_DLL_ENTRY_POINT = BOOL      (WINAPI*)(void* hDll, DWORD dwReason, void* pReserved);
+using LoadLibraryA_fn   = HINSTANCE (WINAPI*)(const char* lpLibFileName);
+using GetProcAddress_fn = UINT_PTR  (WINAPI*)(HINSTANCE hModule, const char* lpProcName);
+using DllEntryPoint_fn  = BOOL      (WINAPI*)(void* hDll, DWORD dwReason, void* pReserved);
 
-struct MANUAL_MAPPING_DATA {
-    f_LoadLibraryA pLoadLibraryA;
-    f_GetProcAddress pGetProcAddress;
-    HINSTANCE hMod;
+struct MappingData {
+    LoadLibraryA_fn     LoadLibraryA_ptr;
+    GetProcAddress_fn   GetProcAddress_ptr;
+    HINSTANCE           module;
 };
 
-void WINAPI shell_code(MANUAL_MAPPING_DATA* mapping_data);
+void WINAPI shell_code(MappingData* mapping_data);
 HANDLE manual_map(HANDLE proc_handle, const char* dll_name);

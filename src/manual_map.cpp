@@ -1,5 +1,7 @@
 // ReSharper disable CppClangTidyPerformanceNoIntToPtr
 // ReSharper disable CppClangTidyClangDiagnosticMicrosoftCast
+// ReSharper disable CppClangTidyClangDiagnosticUnusedMacros
+
 #include <fstream>
 #include <string>
 
@@ -7,11 +9,8 @@
 #include "util.h"
 
 
-HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
-    IMAGE_NT_HEADERS* old_nt_header = nullptr;
-    BYTE* pTargetBase = nullptr;
-
-    DWORD dwCheck = 0;
+// Parse details of supplied .DLL
+std::unique_ptr<BYTE[]> parse_dll(const char* dll_name) {
     if (!GetFileAttributesA(dll_name)) {
         log_write("(ERROR_MM) File doesn't exist");
         return nullptr;
@@ -26,27 +25,33 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
     const auto file_size = file.tellg();
     if (file_size < 0x1000) {
         log_write("(ERROR_MM) File-size invalid");
-        file.close();
         return nullptr;
     }
 
-    const auto src_data = std::make_unique<BYTE[]>(file_size);
+    auto src_data = std::make_unique<BYTE[]>(static_cast<size_t>(file_size));
     if (!src_data) {
         log_write("(ERROR_MM) Memory allocating failed");
-        file.close();
         return nullptr;
     }
 
     file.seekg(0, std::ios::beg);
     file.read(reinterpret_cast<char*>(src_data.get()), file_size);
-    file.close();
+    return src_data;
+}
+
+
+HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
+
+    const auto src_data = parse_dll(dll_name);
 
     if (reinterpret_cast<IMAGE_DOS_HEADER*>(src_data.get())->e_magic != 0x5A4D) {
         log_write("(ERROR_MM) Wrong file type");
         return nullptr;
     }
 
-    old_nt_header = reinterpret_cast<IMAGE_NT_HEADERS*>(src_data.get() + reinterpret_cast<IMAGE_DOS_HEADER*>(src_data.get())->e_lfanew);
+    auto old_nt_header = reinterpret_cast<IMAGE_NT_HEADERS*>(
+        src_data.get() + reinterpret_cast<IMAGE_DOS_HEADER*>(src_data.get())->e_lfanew);
+
     const IMAGE_OPTIONAL_HEADER* old_opt_header = &old_nt_header->OptionalHeader;
     const IMAGE_FILE_HEADER* old_file_header = &old_nt_header->FileHeader;
 
@@ -56,47 +61,58 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
         return nullptr;
     }
 #else
-    if (pOldFileHeader->Machine != IMAGE_FILE_MACHINE_I386) {
+    if (old_file_header->Machine != IMAGE_FILE_MACHINE_I386) {
         log_write("(ERROR_MM) Unsupported platform");
         return nullptr;
     }
 #endif
 
-    pTargetBase = static_cast<BYTE*>(VirtualAllocEx(proc_handle, reinterpret_cast<void*>(old_opt_header->ImageBase), old_opt_header->SizeOfImage,
-        MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    auto target_base = static_cast<BYTE*>(
+        VirtualAllocEx(
+            proc_handle,
+            reinterpret_cast<void*>(old_opt_header->ImageBase),
+            old_opt_header->SizeOfImage,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_EXECUTE_READWRITE
+        ));
 
-    if (!pTargetBase) {
-        pTargetBase = static_cast<BYTE*>(VirtualAllocEx(proc_handle, nullptr, old_opt_header->SizeOfImage,
+    if (!target_base) {
+        target_base = static_cast<BYTE*>(VirtualAllocEx(proc_handle, nullptr, old_opt_header->SizeOfImage,
             MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
 
-        if (!pTargetBase) {
+        if (!target_base) {
             log_write("(ERROR_MM) Memory allocation failed: " + std::to_string(GetLastError()));
             return nullptr;
         }
     }
 
-    MANUAL_MAPPING_DATA data{};
-    data.pLoadLibraryA = LoadLibraryA;
-    data.pGetProcAddress = reinterpret_cast<f_GetProcAddress>(GetProcAddress);
+    MappingData mapping_data{};
+    mapping_data.LoadLibraryA_ptr = LoadLibraryA;
+    mapping_data.GetProcAddress_ptr = reinterpret_cast<GetProcAddress_fn>(GetProcAddress);  // NOLINT(clang-diagnostic-cast-function-type)
 
-    auto* pSectionHeader = IMAGE_FIRST_SECTION(old_nt_header);
-    for (UINT i = 0; i != old_file_header->NumberOfSections; ++i, ++pSectionHeader) {
-        if (pSectionHeader->SizeOfRawData) {
-            if (!WriteProcessMemory(proc_handle, pTargetBase + pSectionHeader->VirtualAddress,
-                src_data.get() + pSectionHeader->PointerToRawData, pSectionHeader->SizeOfRawData, nullptr)) {
+    auto* section_header = IMAGE_FIRST_SECTION(old_nt_header);
+    for (UINT i = 0; i != old_file_header->NumberOfSections; ++i, ++section_header) {
+        if (section_header->SizeOfRawData) {
+            if (!WriteProcessMemory(proc_handle, target_base + section_header->VirtualAddress,
+                src_data.get() + section_header->PointerToRawData, section_header->SizeOfRawData, nullptr)) {
                 log_write("(ERROR_MM) Could not map sections: " + std::to_string(GetLastError()));
-                VirtualFreeEx(proc_handle, pTargetBase, 0, MEM_RELEASE);
+                VirtualFreeEx(proc_handle, target_base, 0, MEM_RELEASE);
                 return nullptr;
             }
         }
     }
-    memcpy(src_data.get(), &data, sizeof(data));
-    WriteProcessMemory(proc_handle, pTargetBase, src_data.get(), 0x1000, nullptr);
+    memcpy(src_data.get(), &mapping_data, sizeof(mapping_data));
+    WriteProcessMemory(proc_handle, target_base, src_data.get(), 0x1000, nullptr);
 
-    void* alloc_memory = VirtualAllocEx(proc_handle, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    void* alloc_memory = VirtualAllocEx(
+        proc_handle,
+        nullptr,
+        0x1000,
+        MEM_COMMIT | MEM_RESERVE,
+        PAGE_EXECUTE_READWRITE);
     if (!alloc_memory) {
         log_write("(ERROR_MM) Shell-code memory allocation failed: " + std::to_string(GetLastError()));
-        VirtualFreeEx(proc_handle, pTargetBase, 0, MEM_RELEASE);
+        VirtualFreeEx(proc_handle, target_base, 0, MEM_RELEASE);
         return nullptr;
     }
 
@@ -107,22 +123,22 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
         nullptr,
         0,
         reinterpret_cast<LPTHREAD_START_ROUTINE>(alloc_memory),
-        pTargetBase,
+        target_base,
         0,
         nullptr
     );
     if (!new_thread) {
         log_write("(ERROR_MM) CreateRemoteThread failed:  " + std::to_string(GetLastError()));
-        VirtualFreeEx(proc_handle, pTargetBase, 0, MEM_RELEASE);
+        VirtualFreeEx(proc_handle, target_base, 0, MEM_RELEASE);
         VirtualFreeEx(proc_handle, alloc_memory, 0, MEM_RELEASE);
         return nullptr;
     }
 
     HINSTANCE hCheck = nullptr;
     while (!hCheck) {
-        MANUAL_MAPPING_DATA data_checked{};
-        ReadProcessMemory(proc_handle, pTargetBase, &data_checked, sizeof(data_checked), nullptr);
-        hCheck = data_checked.hMod;
+        MappingData data_checked{};
+        ReadProcessMemory(proc_handle, target_base, &data_checked, sizeof(data_checked), nullptr);
+        hCheck = data_checked.module;
         Sleep(10);
     }
 
@@ -139,21 +155,20 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
 #define RELOC_FLAG RELOC_FLAG32
 #endif //  _WIN64
 
-
-void WINAPI shell_code(MANUAL_MAPPING_DATA* mapping_data) {
+void WINAPI shell_code(MappingData* mapping_data) {
     // todo: Add more checks to members (mapping_data->)
     if (!mapping_data)
         return;
 
     const auto base = reinterpret_cast<BYTE*>(mapping_data);
-    const auto* optional_headers = 
+    const auto* optional_headers =
         &reinterpret_cast<IMAGE_NT_HEADERS*>(
             base + reinterpret_cast<IMAGE_DOS_HEADER*>(mapping_data)->e_lfanew
-        )->OptionalHeader;
+            )->OptionalHeader;
 
-    const auto load_library_a = mapping_data->pLoadLibraryA;
-    const auto get_proc_address = mapping_data->pGetProcAddress;
-    const auto dll_main = reinterpret_cast<f_DLL_ENTRY_POINT>(base + optional_headers->AddressOfEntryPoint);
+    const auto load_library_a = mapping_data->LoadLibraryA_ptr;
+    const auto get_proc_address = mapping_data->GetProcAddress_ptr;
+    const auto dll_main = reinterpret_cast<DllEntryPoint_fn>(base + optional_headers->AddressOfEntryPoint);
 
     if (BYTE* location_delta = base - optional_headers->ImageBase) {
         // Check if can relocate data
@@ -162,7 +177,7 @@ void WINAPI shell_code(MANUAL_MAPPING_DATA* mapping_data) {
 
         auto* base_relocation = reinterpret_cast<IMAGE_BASE_RELOCATION*>(
             base + optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress
-        );
+            );
         while (base_relocation->VirtualAddress) {
             const UINT entry_count = (base_relocation->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
 
@@ -181,24 +196,24 @@ void WINAPI shell_code(MANUAL_MAPPING_DATA* mapping_data) {
     if (optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size) {
         auto* import_descriptor = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(
             base + optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress
-        );
+            );
 
         while (import_descriptor->Name) {
-            const char* szMod = reinterpret_cast<char*>(base + import_descriptor->Name);
-            HINSTANCE dll = load_library_a(szMod);
-            auto pThunkRef = reinterpret_cast<ULONG_PTR*>(base + import_descriptor->OriginalFirstThunk);
-            auto* pFuncRef = reinterpret_cast<ULONG_PTR*>(base + import_descriptor->FirstThunk);
+            const char* sz_mod = reinterpret_cast<char*>(base + import_descriptor->Name);
+            HINSTANCE dll = load_library_a(sz_mod);
+            auto thunk_ref = reinterpret_cast<ULONG_PTR*>(base + import_descriptor->OriginalFirstThunk);
+            auto* func_ref = reinterpret_cast<ULONG_PTR*>(base + import_descriptor->FirstThunk);
 
-            if (!pThunkRef)
-                pThunkRef = pFuncRef;
+            if (!thunk_ref)
+                thunk_ref = func_ref;
 
-            for (; *pThunkRef; ++pThunkRef, ++pFuncRef) {
-                if (IMAGE_SNAP_BY_ORDINAL(*pThunkRef)) {
-                    *pFuncRef = get_proc_address(dll, reinterpret_cast<char*>(*pThunkRef & 0xFFFF));
+            for (; *thunk_ref; ++thunk_ref, ++func_ref) {
+                if (IMAGE_SNAP_BY_ORDINAL(*thunk_ref)) {
+                    *func_ref = get_proc_address(dll, reinterpret_cast<char*>(*thunk_ref & 0xFFFF));
                 }
                 else {
-                    const auto* import_by_name = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(base + *pThunkRef);
-                    *pFuncRef = get_proc_address(dll, import_by_name->Name);
+                    const auto* import_by_name = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(base + *thunk_ref);
+                    *func_ref = get_proc_address(dll, import_by_name->Name);
                 }
             }
             ++import_descriptor;
@@ -208,11 +223,11 @@ void WINAPI shell_code(MANUAL_MAPPING_DATA* mapping_data) {
     if (optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].Size) {
         const auto* tls = reinterpret_cast<IMAGE_TLS_DIRECTORY*>(
             base + optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].VirtualAddress
-        );
+            );
 
         for (auto* tls_callback = reinterpret_cast<PIMAGE_TLS_CALLBACK*>(tls->AddressOfCallBacks); tls_callback && *tls_callback; ++tls_callback)
             (*tls_callback)(base, DLL_PROCESS_ATTACH, nullptr);
     }
     dll_main(base, DLL_PROCESS_ATTACH, nullptr);
-    mapping_data->hMod = reinterpret_cast<HINSTANCE>(base);
+    mapping_data->module = reinterpret_cast<HINSTANCE>(base);
 }
