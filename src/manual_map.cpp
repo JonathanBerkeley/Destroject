@@ -8,6 +8,7 @@
 #include "manual_map.h"
 #include "util.h"
 
+// Page 164+ Windows Internals Part 1 7th edition 
 
 // Parse details of supplied .DLL
 std::unique_ptr<BYTE[]> parse_dll(const char* dll_name) {
@@ -138,7 +139,7 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
     while (!hCheck) {
         MappingData data_checked{};
         ReadProcessMemory(proc_handle, target_base, &data_checked, sizeof(data_checked), nullptr);
-        hCheck = data_checked.module;
+        hCheck = data_checked.Module;
         Sleep(10);
     }
 
@@ -156,51 +157,66 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
 #endif //  _WIN64
 
 void WINAPI shell_code(MappingData* mapping_data) {
-    // todo: Add more checks to members (mapping_data->)
-    if (!mapping_data)
+
+    auto [LoadLibraryA_ptr, GetProcAddress_ptr, Module] = *mapping_data;
+
+    if (!mapping_data or !LoadLibraryA_ptr or !GetProcAddress_ptr)
         return;
 
     const auto base = reinterpret_cast<BYTE*>(mapping_data);
-    const auto* optional_headers =
-        &reinterpret_cast<IMAGE_NT_HEADERS*>(
-            base + reinterpret_cast<IMAGE_DOS_HEADER*>(mapping_data)->e_lfanew
-            )->OptionalHeader;
 
-    const auto load_library_a = mapping_data->LoadLibraryA_ptr;
-    const auto get_proc_address = mapping_data->GetProcAddress_ptr;
+    auto* e_lfanew = base + reinterpret_cast<IMAGE_DOS_HEADER*>(mapping_data)->e_lfanew;
+    const auto* optional_headers = &reinterpret_cast<IMAGE_NT_HEADERS*>(e_lfanew)->OptionalHeader;
     const auto dll_main = reinterpret_cast<DllEntryPoint_fn>(base + optional_headers->AddressOfEntryPoint);
 
     if (BYTE* location_delta = base - optional_headers->ImageBase) {
-        // Check if can relocate data
+
+        // Check if possible to relocate data
         if (!optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size)
             return;
 
-        auto* base_relocation = reinterpret_cast<IMAGE_BASE_RELOCATION*>(
-            base + optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress
-            );
-        while (base_relocation->VirtualAddress) {
-            const UINT entry_count = (base_relocation->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
+        const auto base_reloc_vaddr = optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress;
 
+        auto* base_relocation = reinterpret_cast<IMAGE_BASE_RELOCATION*>(base + base_reloc_vaddr);
+        auto [VirtualAddress, SizeOfBlock] = *base_relocation;
+
+        while (VirtualAddress) {
+
+            const UINT entry_count = (SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
             auto relative_info = reinterpret_cast<WORD*>(base_relocation + 1);
+
             for (UINT i = 0; i != entry_count; ++i, ++relative_info) {
+
                 if (RELOC_FLAG(*relative_info)) {
-                    const auto patch = reinterpret_cast<UINT_PTR*>(base + base_relocation->VirtualAddress + ((*relative_info) & 0xFFF));
+
+                    const auto reloc_addr = reinterpret_cast<UINT_PTR*>(base + VirtualAddress);
+                    const auto patch = reloc_addr + (*relative_info & 0xFFF);
+
                     *patch += reinterpret_cast<UINT_PTR>(location_delta);
                 }
+
             }
+
             base_relocation = reinterpret_cast<IMAGE_BASE_RELOCATION*>(
-                reinterpret_cast<BYTE*>(base_relocation) + base_relocation->SizeOfBlock);
+                reinterpret_cast<BYTE*>(base_relocation) + SizeOfBlock);
+
         }
     }
 
-    if (optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size) {
-        auto* import_descriptor = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(
-            base + optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress
-            );
+    // Check for import directory
+    if (const auto [VirtualAddress, Size]
+        = optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+        Size) {
+        
+        auto* import_descriptor = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(base + VirtualAddress);
 
         while (import_descriptor->Name) {
+
             const char* sz_mod = reinterpret_cast<char*>(base + import_descriptor->Name);
-            HINSTANCE dll = load_library_a(sz_mod);
+
+            // ReSharper disable once CppLocalVariableMayBeConst
+            HINSTANCE dll = LoadLibraryA_ptr(sz_mod);
+
             auto thunk_ref = reinterpret_cast<ULONG_PTR*>(base + import_descriptor->OriginalFirstThunk);
             auto* func_ref = reinterpret_cast<ULONG_PTR*>(base + import_descriptor->FirstThunk);
 
@@ -209,25 +225,30 @@ void WINAPI shell_code(MappingData* mapping_data) {
 
             for (; *thunk_ref; ++thunk_ref, ++func_ref) {
                 if (IMAGE_SNAP_BY_ORDINAL(*thunk_ref)) {
-                    *func_ref = get_proc_address(dll, reinterpret_cast<char*>(*thunk_ref & 0xFFFF));
+                    *func_ref = GetProcAddress_ptr(dll, reinterpret_cast<char*>(*thunk_ref & 0xFFFF));
                 }
                 else {
                     const auto* import_by_name = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(base + *thunk_ref);
-                    *func_ref = get_proc_address(dll, import_by_name->Name);
+                    *func_ref = GetProcAddress_ptr(dll, import_by_name->Name);
                 }
             }
             ++import_descriptor;
         }
     }
 
-    if (optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].Size) {
-        const auto* tls = reinterpret_cast<IMAGE_TLS_DIRECTORY*>(
-            base + optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].VirtualAddress
-            );
+    // Check for thread local storage
+    // https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#the-tls-directory
+    if (const auto [VirtualAddress, Size]
+        = optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS];
+        Size) {
+
+        const auto* tls = reinterpret_cast<IMAGE_TLS_DIRECTORY*>(base + VirtualAddress);
 
         for (auto* tls_callback = reinterpret_cast<PIMAGE_TLS_CALLBACK*>(tls->AddressOfCallBacks); tls_callback && *tls_callback; ++tls_callback)
             (*tls_callback)(base, DLL_PROCESS_ATTACH, nullptr);
+
     }
+
     dll_main(base, DLL_PROCESS_ATTACH, nullptr);
-    mapping_data->module = reinterpret_cast<HINSTANCE>(base);
+    mapping_data->Module = reinterpret_cast<HINSTANCE>(base);
 }
