@@ -2,7 +2,7 @@
 #include <string>
 
 namespace constants {
-    const std::string VERSION{ "0.3.6" };
+    const std::string VERSION{ "0.4.2" };
     const std::string NAME{ "destroject" };
     const std::string CONFIG { "destroject.cfg" };
 }

@@ -1,3 +1,4 @@
+
 // ReSharper disable CppClangTidyPerformanceNoIntToPtr
 // ReSharper disable CppClangTidyClangDiagnosticMicrosoftCast
 // ReSharper disable CppClangTidyClangDiagnosticUnusedMacros
@@ -8,7 +9,6 @@
 #include "manual_map.h"
 #include "util.h"
 
-// Page 164+ Windows Internals Part 1 7th edition 
 
 // Parse details of supplied .DLL
 std::unique_ptr<BYTE[]> parse_dll(const char* dll_name) {
@@ -128,6 +128,8 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
         0,
         nullptr
     );
+
+    // If CreateRemoteThread causes the process to crash, this won't know
     if (!new_thread) {
         log_write("(ERROR_MM) CreateRemoteThread failed:  " + std::to_string(GetLastError()));
         VirtualFreeEx(proc_handle, target_base, 0, MEM_RELEASE);
@@ -137,6 +139,14 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
 
     HINSTANCE hCheck = nullptr;
     while (!hCheck) {
+
+        // Prevent infinite loop on target process death
+        DWORD exit_code{};
+        if (GetExitCodeProcess(proc_handle, &exit_code); exit_code != STILL_ACTIVE) {
+            log_write("(ERROR_MM) Target process died while attempting to manual map to it");
+            return nullptr;
+        }
+
         MappingData data_checked{};
         ReadProcessMemory(proc_handle, target_base, &data_checked, sizeof(data_checked), nullptr);
         hCheck = data_checked.Module;
@@ -158,15 +168,16 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
 
 void WINAPI shell_code(MappingData* mapping_data) {
 
-    auto [LoadLibraryA_ptr, GetProcAddress_ptr, Module] = *mapping_data;
-
-    if (!mapping_data or !LoadLibraryA_ptr or !GetProcAddress_ptr)
+    if (!mapping_data)
         return;
 
     const auto base = reinterpret_cast<BYTE*>(mapping_data);
 
     auto* e_lfanew = base + reinterpret_cast<IMAGE_DOS_HEADER*>(mapping_data)->e_lfanew;
     const auto* optional_headers = &reinterpret_cast<IMAGE_NT_HEADERS*>(e_lfanew)->OptionalHeader;
+
+    const auto load_library_a = mapping_data->LoadLibraryA_ptr;
+    const auto get_proc_address = mapping_data->GetProcAddress_ptr;
     const auto dll_main = reinterpret_cast<DllEntryPoint_fn>(base + optional_headers->AddressOfEntryPoint);
 
     if (BYTE* location_delta = base - optional_headers->ImageBase) {
@@ -176,30 +187,25 @@ void WINAPI shell_code(MappingData* mapping_data) {
             return;
 
         const auto base_reloc_vaddr = optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress;
-
         auto* base_relocation = reinterpret_cast<IMAGE_BASE_RELOCATION*>(base + base_reloc_vaddr);
-        auto [VirtualAddress, SizeOfBlock] = *base_relocation;
 
-        while (VirtualAddress) {
+        while (base_relocation->VirtualAddress) {
 
-            const UINT entry_count = (SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
+            const UINT entry_count = (base_relocation->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
             auto relative_info = reinterpret_cast<WORD*>(base_relocation + 1);
 
-            for (UINT i = 0; i != entry_count; ++i, ++relative_info) {
+            for (UINT i = 0u; i != entry_count; ++i, ++relative_info) {
 
                 if (RELOC_FLAG(*relative_info)) {
-
-                    const auto reloc_addr = reinterpret_cast<UINT_PTR*>(base + VirtualAddress);
-                    const auto patch = reloc_addr + (*relative_info & 0xFFF);
+                    const auto reloc_addr = base + base_relocation->VirtualAddress + (*relative_info & 0xFFF);
+                    const auto patch = reinterpret_cast<UINT_PTR*>(reloc_addr);
 
                     *patch += reinterpret_cast<UINT_PTR>(location_delta);
                 }
 
             }
-
             base_relocation = reinterpret_cast<IMAGE_BASE_RELOCATION*>(
-                reinterpret_cast<BYTE*>(base_relocation) + SizeOfBlock);
-
+                reinterpret_cast<BYTE*>(base_relocation) + base_relocation->SizeOfBlock);
         }
     }
 
@@ -207,7 +213,7 @@ void WINAPI shell_code(MappingData* mapping_data) {
     if (const auto [VirtualAddress, Size]
         = optional_headers->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
         Size) {
-        
+
         auto* import_descriptor = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(base + VirtualAddress);
 
         while (import_descriptor->Name) {
@@ -215,7 +221,7 @@ void WINAPI shell_code(MappingData* mapping_data) {
             const char* sz_mod = reinterpret_cast<char*>(base + import_descriptor->Name);
 
             // ReSharper disable once CppLocalVariableMayBeConst
-            HINSTANCE dll = LoadLibraryA_ptr(sz_mod);
+            HINSTANCE dll = load_library_a(sz_mod);
 
             auto thunk_ref = reinterpret_cast<ULONG_PTR*>(base + import_descriptor->OriginalFirstThunk);
             auto* func_ref = reinterpret_cast<ULONG_PTR*>(base + import_descriptor->FirstThunk);
@@ -225,11 +231,11 @@ void WINAPI shell_code(MappingData* mapping_data) {
 
             for (; *thunk_ref; ++thunk_ref, ++func_ref) {
                 if (IMAGE_SNAP_BY_ORDINAL(*thunk_ref)) {
-                    *func_ref = GetProcAddress_ptr(dll, reinterpret_cast<char*>(*thunk_ref & 0xFFFF));
+                    *func_ref = get_proc_address(dll, reinterpret_cast<char*>(*thunk_ref & 0xFFFF));
                 }
                 else {
                     const auto* import_by_name = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(base + *thunk_ref);
-                    *func_ref = GetProcAddress_ptr(dll, import_by_name->Name);
+                    *func_ref = get_proc_address(dll, import_by_name->Name);
                 }
             }
             ++import_descriptor;
@@ -248,7 +254,6 @@ void WINAPI shell_code(MappingData* mapping_data) {
             (*tls_callback)(base, DLL_PROCESS_ATTACH, nullptr);
 
     }
-
     dll_main(base, DLL_PROCESS_ATTACH, nullptr);
     mapping_data->Module = reinterpret_cast<HINSTANCE>(base);
 }
