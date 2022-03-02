@@ -60,9 +60,15 @@ int main(const int argc, const char* argv[]) {
     } break;
     case 2:
     {
-        // On argument supplied
+        // On argument supplied for target
         target = argv[1];
         config_write(target);
+    } break;
+    case 3:
+    {
+        // On argument supplied for mode
+        manual_map = std::string{ argv[2] } == "Manual";
+        config_write(manual_map ? "\nManual" : "\nDefault");
     } break;
     default:
         return 0;
@@ -90,7 +96,7 @@ int main(const int argc, const char* argv[]) {
         while (!is_proc_running(qualified_target))
             sleep(200);
 
-        sleep(3000);
+        sleep(1000);
 
         int proc_id = static_cast<int>(get_proc_id(qualified_target));
         log_write("(INFO) " + target + " found with process id: " + std::to_string(proc_id));
