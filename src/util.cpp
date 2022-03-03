@@ -87,3 +87,14 @@ void log_write(std::string text) {
 void sleep(const long long milliseconds) {
     std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
 }
+
+
+// To_lower for string
+std::string str_to_lower(const std::string& str) {
+    std::string output;
+
+    for (auto c : str)
+        output += static_cast<char>(std::tolower(c));
+
+    return output;
+}

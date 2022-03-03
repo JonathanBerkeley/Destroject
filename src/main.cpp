@@ -27,6 +27,9 @@ constexpr bool x64 = false;
 #endif
 
 
+using namespace std::string_literals;
+
+
 int main(const int argc, const char* argv[]) {
     // Get and format windows local time
     SYSTEMTIME lt;
@@ -67,8 +70,13 @@ int main(const int argc, const char* argv[]) {
     case 3:
     {
         // On argument supplied for mode
-        manual_map = std::string{ argv[2] } == "Manual";
-        config_write(manual_map ? "\nManual" : "\nDefault");
+        target = argv[1];
+
+        auto mode_lowercase = str_to_lower(std::string{ argv[2] });
+        manual_map = mode_lowercase == "manual";
+        auto injection_mode = manual_map ? "\nManual"s : "\nDefault"s;
+
+        config_write(target + injection_mode);
     } break;
     default:
         return 0;
