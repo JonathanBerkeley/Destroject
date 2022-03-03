@@ -173,6 +173,9 @@
     <Image Include="..\destrico\destroco3-5.ico" />
     <Image Include="..\destrico\destroco3-6.ico" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\README.md" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
