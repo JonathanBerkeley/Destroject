@@ -252,8 +252,10 @@ HANDLE inject_into_proc(const std::string& dll_name, const int process_id) {
 HANDLE map_into_proc(const std::string& dll_name, const int process_id) {
     try {
         HANDLE proc_handle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, process_id);
-        if (proc_handle == nullptr)
+        if (proc_handle == nullptr) {
+            log_write("(ERROR) OpenProcess failed: " + std::to_string(GetLastError()));
             return nullptr;
+        }
 
         HANDLE new_thread = manual_map(proc_handle, dll_name.c_str());
 
