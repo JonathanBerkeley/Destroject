@@ -41,6 +41,12 @@ std::unique_ptr<BYTE[]> parse_dll(const char* dll_name) {
 }
 
 
+/**
+ * \brief Maps dll into memory manually
+ * \param proc_handle Handle to process
+ * \param dll_name Exact name of the DLL
+ * \return A handle to execution thread created if succeeds
+ */
 HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
 
     const auto src_data = parse_dll(dll_name);
