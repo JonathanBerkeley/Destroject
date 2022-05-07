@@ -9,7 +9,6 @@
 #include "util.h"
 
 
-
 /**
  * \brief Parse details of supplied .DLL
  * \param dll_name Name of the dll to parse
@@ -179,7 +178,7 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
 
 /**
  * \brief Code to be written to process and then called
- * \param mapping_data Data to be mapped into target process
+ * \param mapping_data Function pointers required for manual mapping
  */
 void WINAPI shell_code(MappingData* mapping_data) {
 

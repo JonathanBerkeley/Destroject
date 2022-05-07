@@ -145,7 +145,6 @@ int main(const int argc, const char* argv[]) {
 }
 
 
-
 /**
  * \brief Check if a given process is currently running
  * \param proc_name Name of the process
@@ -166,7 +165,6 @@ bool is_proc_running(const wchar_t* proc_name) {
     CloseHandle(proc_snap);
     return is_running;
 }
-
 
 
 /**
@@ -192,7 +190,6 @@ DWORD get_proc_id(const wchar_t* proc_name) {
     CloseHandle(proc_snap);
     return 0;
 }
-
 
 
 /**

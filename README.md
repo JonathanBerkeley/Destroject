@@ -1,6 +1,9 @@
 # Destroject
 Windows multiple DLL process injector     
 
+[UnknownCheats mirror](https://www.unknowncheats.me/forum/general-programming-and-reversing/491785-injector-multiple-dlls-interface-windows-manualmap-traditional.html)    
+Built as part of the [Quack](https://github.com/JonathanBerkeley/quack) project    
+
 # Usage
 1. Place injector in a folder with DLL(s)    
 2. Open command prompt / powershell in the folder     
@@ -24,3 +27,6 @@ Right click solution -> Properties -> Configuration Properties -> Build Events -
 C:\Users\Me\Desktop is a placeholder for the location of the injector + .DLL(s)    
 
 "ProcessName" is a placeholder for the name of the target process -- use the underlying .exe name, you can find this using task manager (right-click process -> properties)    
+
+# Tutorial
+[![Tutorial](https://i.imgur.com/nj3qE5S.png)](https://www.youtube.com/watch?v=j0_t6Hu9I1w)    

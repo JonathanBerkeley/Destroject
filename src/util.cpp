@@ -14,9 +14,9 @@
  * \brief Reads and parses config details
  * \return Structure containing string of contents or an error with error message
  */
-file_contents config_read() {
+FileContents config_read() {
     if (std::ifstream in{ constants::CONFIG }; in) {
-        file_contents contents{};
+        FileContents contents{};
 
         try {
             std::getline(in, contents.target);
@@ -36,7 +36,7 @@ file_contents config_read() {
             return contents;
         }
     }
-    return file_contents{ .error = "(ERROR) Couldn't find or open config!" };
+    return FileContents{ .error = "(ERROR) Couldn't find or open config!" };
 }
 
 
@@ -49,7 +49,6 @@ void config_write(const std::string& content) {
         cfg << content;
     }
 }
-
 
 
 /**
@@ -95,7 +94,6 @@ void log_write(std::string text) {
 }
 
 
-
 /**
  * \brief Wrapper around std::this_thread::sleep_for() with long long to milliseconds conversion
  * \param milliseconds Milliseconds value of time to sleep for
@@ -103,7 +101,6 @@ void log_write(std::string text) {
 void sleep(const long long milliseconds) {
     std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
 }
-
 
 
 /**

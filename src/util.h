@@ -2,13 +2,17 @@
 #include <Windows.h>
 #include <string>
 
-struct file_contents {
+
+/**
+ * \brief Represents the contents and condition of a file
+ */
+struct FileContents {
     std::string target;
     std::string mode;
     std::string error;
 };
 
-file_contents config_read();
+FileContents config_read();
 void config_write(const std::string& content);
 void log_write(std::string text);
 void sleep(long long milliseconds);
