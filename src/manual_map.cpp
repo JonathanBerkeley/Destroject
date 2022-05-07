@@ -1,4 +1,3 @@
-
 // ReSharper disable CppClangTidyPerformanceNoIntToPtr
 // ReSharper disable CppClangTidyClangDiagnosticMicrosoftCast
 // ReSharper disable CppClangTidyClangDiagnosticUnusedMacros
@@ -10,7 +9,12 @@
 #include "util.h"
 
 
-// Parse details of supplied .DLL
+
+/**
+ * \brief Parse details of supplied .DLL
+ * \param dll_name Name of the dll to parse
+ * \return Array of bytes parsed from dll
+ */
 std::unique_ptr<BYTE[]> parse_dll(const char* dll_name) {
     if (!GetFileAttributesA(dll_name)) {
         log_write("(ERROR_MM) File doesn't exist");
@@ -172,6 +176,11 @@ HANDLE manual_map(HANDLE proc_handle, const char* dll_name) {
 #define RELOC_FLAG RELOC_FLAG32
 #endif //  _WIN64
 
+
+/**
+ * \brief Code to be written to process and then called
+ * \param mapping_data Data to be mapped into target process
+ */
 void WINAPI shell_code(MappingData* mapping_data) {
 
     if (!mapping_data)

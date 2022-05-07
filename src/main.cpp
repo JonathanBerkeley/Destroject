@@ -145,7 +145,12 @@ int main(const int argc, const char* argv[]) {
 }
 
 
-// Check if a given process is currently running
+
+/**
+ * \brief Check if a given process is currently running
+ * \param proc_name Name of the process
+ * \return True if the process is currently running, false otherwise
+ */
 bool is_proc_running(const wchar_t* proc_name) {
     bool is_running = false;
     PROCESSENTRY32 process_entry{};
@@ -163,7 +168,12 @@ bool is_proc_running(const wchar_t* proc_name) {
 }
 
 
-// Returns a process ID for given process name
+
+/**
+ * \brief Returns a process ID for given process name
+ * \param proc_name Process name to retrieve process ID of
+ * \return Process ID
+ */
 DWORD get_proc_id(const wchar_t* proc_name) {
     PROCESSENTRY32 process_entry{};
     process_entry.dwSize = sizeof(PROCESSENTRY32);
@@ -184,7 +194,13 @@ DWORD get_proc_id(const wchar_t* proc_name) {
 }
 
 
-// Returns handle if successful, 0 otherwise
+
+/**
+ * \brief Injects DLL into process through LoadLibrary method
+ * \param dll_name Name of DLL to be injected
+ * \param process_id ID of process that is to be targeted for injection
+ * \return Handle if successful, 0 otherwise
+ */
 HANDLE inject_into_proc(const std::string& dll_name, const int process_id) {
     try {
         const long dll_length = static_cast<long>(dll_name.length() + 1);
