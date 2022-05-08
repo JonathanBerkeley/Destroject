@@ -25,6 +25,7 @@
 !*.gif
 !*.ico
 !*.rc
+!*.cd
 
 # Plain text files
 !.gitignore

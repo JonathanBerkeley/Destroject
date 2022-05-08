@@ -74,5 +74,6 @@
     <None Include="..\README.md">
       <Filter>Resource Files\Markdown</Filter>
     </None>
+    <None Include="ClassDiagram.cd" />
   </ItemGroup>
 </Project>
